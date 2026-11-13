@@ -1,0 +1,14 @@
+{
+  "stream_url": "rtsp://CAMERA_IP/axis-media/media.amp",
+  "weights_path": "C:/models/best_car_plate.pt",
+  "output_root": "events",
+  "roi": [350, 250, 1150, 760],
+  "confidence": 0.25,
+  "imgsz": 640,
+  "confirmation_frames": 3,
+  "confirmation_iou": 0.5,
+  "rearm_after_seconds": 120,
+  "reconnect_delay_seconds": 5,
+  "metrics_interval_seconds": 10,
+  "jpeg_quality": 95
+}
