@@ -221,12 +221,13 @@ def save_event(
     detection: Detection,
     roi: tuple[int, int, int, int],
     jpeg_quality: int,
+    upscale: int,
 ) -> dict[str, Any]:
     stem = timestamp()
     crop, crop_box = clamp_crop(frame, detection.box)
     if crop is None:
         raise RuntimeError("Invalid detection box")
-    rectified, rectify_method = rectifier.rectify_crop(crop)
+    ocr_variants = rectifier.ocr_variants(crop, upscale)
     annotated = frame.copy()
     x1, y1, x2, y2 = (int(value) for value in detection.box)
     roi_x1, roi_y1, roi_x2, roi_y2 = roi
@@ -237,20 +238,28 @@ def save_event(
         "original": output_root / "original" / f"{stem}.jpg",
         "annotated": output_root / "annotated" / f"{stem}.jpg",
         "crop": output_root / "crops" / f"{stem}.jpg",
-        "rectified": output_root / "rectified" / f"{stem}.jpg",
+    }
+    variant_paths = {
+        name: output_root / "rectified" / name / f"{stem}_plate_{name}.jpg"
+        for name in ("gray", "clahe", "adaptive")
     }
     save_jpeg(cv2, paths["original"], frame, jpeg_quality)
     save_jpeg(cv2, paths["annotated"], annotated, jpeg_quality)
     save_jpeg(cv2, paths["crop"], crop, jpeg_quality)
-    save_jpeg(cv2, paths["rectified"], rectified, jpeg_quality)
+    for name, image in ocr_variants.items():
+        save_jpeg(cv2, variant_paths[name], image, jpeg_quality)
     return {
         "timestamp": stem,
         "confidence": round(detection.confidence, 6),
         "bbox_xyxy": [round(value, 2) for value in detection.box],
         "crop_bbox_xyxy": list(crop_box),
         "roi": list(roi),
-        "rectify_method": rectify_method,
-        "files": {name: str(path) for name, path in paths.items()},
+        "ocr_variants_source": "crop",
+        "upscale": upscale,
+        "files": {
+            **{name: str(path) for name, path in paths.items()},
+            **{f"rectified_{name}": str(path) for name, path in variant_paths.items()},
+        },
     }
 
 
@@ -361,6 +370,7 @@ def main() -> int:
                         detection=confirmed,
                         roi=roi,
                         jpeg_quality=int(config["jpeg_quality"]),
+                        upscale=int(config["upscale"]),
                     )
                     append_jsonl(events_path, event)
                     metrics.count("saved_events")

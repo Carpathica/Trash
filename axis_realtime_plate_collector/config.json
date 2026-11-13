@@ -5,6 +5,7 @@
   "roi": [350, 250, 1150, 760],
   "confidence": 0.25,
   "imgsz": 640,
+  "upscale": 3,
   "confirmation_frames": 3,
   "confirmation_iou": 0.5,
   "min_plate_width_px": 120,
