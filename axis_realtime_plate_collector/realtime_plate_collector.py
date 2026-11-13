@@ -50,10 +50,19 @@ class Detection:
     confidence: float
 
 
+def center_shift(first: Detection, second: Detection) -> float:
+    first_x = (first.box[0] + first.box[2]) / 2
+    first_y = (first.box[1] + first.box[3]) / 2
+    second_x = (second.box[0] + second.box[2]) / 2
+    second_y = (second.box[1] + second.box[3]) / 2
+    return ((first_x - second_x) ** 2 + (first_y - second_y) ** 2) ** 0.5
+
+
 @dataclass
 class ConfirmationTracker:
     frames_required: int
     min_iou: float
+    max_center_shift_px: float
     consecutive_frames: int = 0
     previous: Detection | None = None
 
@@ -61,7 +70,12 @@ class ConfirmationTracker:
         if detection is None:
             self.reset()
             return None
-        if self.previous is not None and box_iou(self.previous.box, detection.box) >= self.min_iou:
+        stable = (
+            self.previous is not None
+            and box_iou(self.previous.box, detection.box) >= self.min_iou
+            and center_shift(self.previous, detection) <= self.max_center_shift_px
+        )
+        if stable:
             self.consecutive_frames += 1
         else:
             self.consecutive_frames = 1
@@ -266,7 +280,11 @@ def main() -> int:
 
     rectifier = import_rectifier(args.rectifier)
     model = YOLO(str(weights_path))
-    tracker = ConfirmationTracker(int(config["confirmation_frames"]), float(config["confirmation_iou"]))
+    tracker = ConfirmationTracker(
+        frames_required=int(config["confirmation_frames"]),
+        min_iou=float(config["confirmation_iou"]),
+        max_center_shift_px=float(config["max_center_shift_px"]),
+    )
     metrics = Metrics()
     events_path = output_root / "events.jsonl"
     metrics_path = output_root / "metrics.jsonl"
@@ -318,7 +336,16 @@ def main() -> int:
             metrics.observe("inference_ms", inference_ms)
             detection = select_best_detection(result, roi)
             if detection is not None:
-                metrics.count("detected_frames")
+                x1, y1, x2, y2 = detection.box
+                plate_width = x2 - x1
+                plate_height = y2 - y1
+                if (
+                    plate_width < float(config["min_plate_width_px"])
+                    or plate_height < float(config["min_plate_height_px"])
+                ):
+                    detection = None
+                else:
+                    metrics.count("detected_frames")
             confirmed = tracker.update(detection)
             now = time.monotonic()
             if confirmed is not None:
